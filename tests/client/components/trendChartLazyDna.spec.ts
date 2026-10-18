@@ -3,7 +3,7 @@ import { act, createElement as h } from 'react'
 import { describe, test } from 'vitest'
 import type { TrendBand } from '../../../src/client/dna'
 import { flush, mount, queryAll } from '../helpers/kit'
-import { capDnaRuns } from '../../../src/client/components/trendDnaBars'
+import { DNA_SNAP_PX, capDnaRuns, snapDnaRuns } from '../../../src/client/components/trendDnaBars'
 import { TrendChart, bars, propsOf, req, viewport } from './trendChartHarness'
 
 const bandOf = (seq: number): TrendBand[] => [{ key: 'a', cat: 'system', tokens: 10 + (seq % 7), off: 0, color: '#8b5cf6' }]
@@ -31,6 +31,44 @@ function lazyBands() {
   }
   return { calls, at }
 }
+
+describe('snapDnaRuns', () => {
+  test('snaps internal boundaries to the shared pixel grid and keeps identical bands aligned across bars', () => {
+    const shortBar = [
+      { color: '#a', from: 0, to: 2.3 },
+      { color: '#b', from: 2.3, to: 7.9 },
+    ]
+    const tallBar = [
+      { color: '#a', from: 0, to: 2.3 },
+      { color: '#b', from: 2.3, to: 10.9 },
+    ]
+    const a = snapDnaRuns(shortBar)
+    const b = snapDnaRuns(tallBar)
+    assert.equal(a[0].to, 2, '2.3px snaps down to the 2px grid')
+    assert.equal(b[0].to, a[0].to, 'the same prefix band keeps the same boundary in a taller bar')
+    assert.equal(a[a.length - 1].to, 7.9, 'the final boundary stays exact')
+    assert.equal(b[b.length - 1].to, 10.9)
+    assert.deepEqual(snapDnaRuns([]), [])
+    assert.equal(DNA_SNAP_PX, 2)
+  })
+
+  test('merges same-colour runs and absorbs sub-grid strands instead of leaving gaps', () => {
+    const merged = snapDnaRuns([
+      { color: '#a', from: 0, to: 2.1 },
+      { color: '#a', from: 2.1, to: 4.4 },
+      { color: '#b', from: 4.4, to: 9.2 },
+    ])
+    assert.deepEqual(merged.map(r => r.color), ['#a', '#b'])
+    const tiny = snapDnaRuns([
+      { color: '#a', from: 0, to: 1.9 },
+      { color: '#b', from: 1.9, to: 2.1 },
+      { color: '#c', from: 2.1, to: 6.5 },
+    ])
+    const covered = tiny.map(r => [r.from, r.to])
+    for (let i = 1; i < covered.length; i++) assert.equal(covered[i][0], covered[i - 1][1], 'runs stay contiguous')
+    assert.equal(covered.at(-1)?.[1], 6.5)
+  })
+})
 
 describe('capDnaRuns', () => {
   test('passes short runs through and samples dense ones onto a fixed stop count', () => {

@@ -34,6 +34,31 @@ export function capDnaRuns(
 
 /** DNA bar interior: ONE gradient div, same-color bands coalesced (long runs would bloat the style string) and
  * zero-token bands skipped. */
+/** DNA bars share one px-per-token scale, so band boundaries must snap to ONE shared pixel grid: sampling by each
+ *  bar's own height (or bucketing per bar) made identical strands land on different offsets and broke alignment. */
+export const DNA_SNAP_PX = 2
+
+export function snapDnaRuns(
+  runs: { color: string; from: number; to: number }[],
+  grid: number = DNA_SNAP_PX,
+): { color: string; from: number; to: number }[] {
+  if (runs.length === 0) return runs
+  const out: { color: string; from: number; to: number }[] = []
+  const end = runs[runs.length - 1].to
+  let from = runs[0].from
+  for (let i = 0; i < runs.length; i++) {
+    // Quantize internal boundaries to the shared grid (nearest); the final boundary stays exact so the bar fills.
+    const rawTo = runs[i].to
+    const to = i === runs.length - 1 ? rawTo : Math.min(end, Math.round(rawTo / grid) * grid)
+    if (to <= from) continue
+    const prev = out.length > 0 ? out[out.length - 1] : null
+    if (prev !== null && prev.color === runs[i].color) prev.to = to
+    else out.push({ color: runs[i].color, from, to })
+    from = to
+  }
+  return out
+}
+
 interface DnaBarProps {
   bands: TrendBand[]
   total: number
@@ -50,9 +75,8 @@ export const DnaBar = function DnaBar(props: DnaBarProps): ReactElement | null {
   const visible: TrendBand[] = []
   for (const b of props.bands) if (b.tokens > 0) visible.push(b)
   if (visible.length === 0) return null
-  // Shared per-token pixel scale (chartHeight/maxTotal), not per-bar percentages: the same band's stops are
-  // identical numbers in every bar, so the browser rasterizes common strands identically (per-bar %
-  // stops quantized against each bar's own total and made sub-pixel strands flip visible/merged).
+  // Shared per-token pixel scale (chartHeight/maxTotal): the same band starts at the same px in every bar. The
+  // stops additionally snap to a shared pixel grid, so adjacent bars keep identical strand boundaries.
   const pxPerToken = props.chartHeight / props.maxTotal
   const runs: { color: string; from: number; to: number }[] = []
   for (const b of visible) {
@@ -62,7 +86,7 @@ export const DnaBar = function DnaBar(props: DnaBarProps): ReactElement | null {
     if (last !== null && last.color === b.color && last.to === from) last.to = to
     else runs.push({ color: b.color, from, to })
   }
-  const stops = capDnaRuns(runs, DNA_MAX_STOPS)
+  const stops = snapDnaRuns(runs, DNA_SNAP_PX)
   // A hit always exists (the first visible band starts at off 0; the fraction clamps), so the type carries no null.
   const hitAt = (e: { clientY: number; currentTarget: HTMLDivElement }): TrendBand => {
     const rect = e.currentTarget.getBoundingClientRect()
