@@ -12,6 +12,8 @@ const FileCard = makeFileCard(kit, createContextSettings())
 const PITCH = 41
 const GAP = 2
 const T0 = 1700000000000
+/** Some rows wrap to two lines: windowing must fall back to the full list then. */
+let wrapRows = false
 let originals: [string, PropertyDescriptor | undefined][] = []
 
 /** jsdom lays nothing out: give the list a 500×320 box and the rows a fixed 41px pitch so the card's own
@@ -50,9 +52,12 @@ beforeAll(() => {
       if (this.classList.contains('lc-fa-item')) {
         const items = [...(this.parentElement?.querySelectorAll('.lc-fa-item') ?? [])]
         const i = items.indexOf(this)
+        const heightOf = (j: number): number => (wrapRows && j % 7 === 0 ? PITCH + 20 : PITCH) - GAP
+        let top = 0
+        for (let j = 0; j < i; j++) top += heightOf(j) + GAP
         return {
-          left: 0, top: i * PITCH, width: 500, height: PITCH - GAP,
-          right: 500, bottom: i * PITCH + PITCH - GAP, x: 0, y: i * PITCH, toJSON: () => ({}),
+          left: 0, top, width: 500, height: heightOf(i),
+          right: 500, bottom: top + heightOf(i), x: 0, y: top, toJSON: () => ({}),
         } as DOMRect
       }
       return rect.call(this) as DOMRect
@@ -108,6 +113,18 @@ describe('FileCard row windowing', () => {
       assert.equal(topPad.style.height, `${13 * PITCH - GAP}px`)
       assert.equal(bottomPad.style.height, `${21 * PITCH - GAP}px`)
     } finally {
+      await m.unmount()
+    }
+  })
+
+  test('mixed wrapped row heights keep the full list so the scroll geometry stays truthful', async () => {
+    wrapRows = true
+    const m = await mount(h(FileCard, props))
+    try {
+      await until(() => queryAll(m.container, '.lc-fa-item').length === 60, 'the full list renders')
+      assert.equal(queryAll(m.container, '.lc-row-pad').length, 0, 'no spacers on a non-uniform list')
+    } finally {
+      wrapRows = false
       await m.unmount()
     }
   })

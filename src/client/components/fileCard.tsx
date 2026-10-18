@@ -60,8 +60,8 @@ export function makeFileCard(kit: ViewKit, settings: ContextSettings): Component
     // single-line rows (narrow cards wrap, so their heights are not uniform and the list renders in full).
     const listRef = useRef<HTMLDivElement | null>(null)
     const [listWide, setListWide] = useState(false)
-    // Row pitch (height + any gap) is measured from the full list before windowing: rows wrap on narrow cards, so a
-    // hard-coded height would break the scroll geometry there (the gate below keeps narrow cards unwindowed).
+    // Row pitch (height + any gap) is measured from the full list before windowing; windowing stays off unless every
+    // collapsed row measures the same height (long paths wrap otherwise and mixed heights would break the spacers).
     const [rowPitch, setRowPitch] = useState(0)
     const [rowGap, setRowGap] = useState(0)
 
@@ -114,18 +114,34 @@ export function makeFileCard(kit: ViewKit, settings: ContextSettings): Component
       return () => { observer.disconnect() }
       /* v8 ignore stop */
     }, [shown.length > 0])
+    // Windowed rendering needs UNIFORM row heights. The earlier two-row pitch probe missed wrapped long paths, so a
+    // mixed-height list could get wrong spacer heights (scroll jumps). Measure the FULL list first (the initial
+    // render is unwindowed) and only enable windowing when every collapsed row has the same height.
     useEffect(() => {
+      setRowPitch(0)
+      setRowGap(0)
+    }, [shown.length, listWide, filter, query, sort, openPath])
+    useEffect(() => {
+      if (!listWide || openPath !== null || rowPitch > 0) return
       const el = listRef.current
+      /* v8 ignore start -- the ref attaches for every non-empty list; the guards only cover a mid-swap render. */
       if (el === null) return
-      const items = el.querySelectorAll<HTMLElement>('.lc-fa-item')
-      if (items.length < 2) return
-      const first = items[0].getBoundingClientRect()
-      const pitch = items[1].getBoundingClientRect().top - first.top
+      const items = [...el.querySelectorAll<HTMLElement>('.lc-fa-item')]
+      // The reset above re-renders the list in full; a partial window is never a valid uniformity sample.
+      if (items.length < 2 || items.length !== shown.length) return
+      /* v8 ignore stop */
+      const rects = items.map(item => item.getBoundingClientRect())
+      const first = rects[0]
+      const height = Math.round(first.height)
+      const uniform = height > 4 && rects.every(r => Math.abs(Math.round(r.height) - height) <= 1)
+      if (!uniform) return
+      const pitch = rects[1].top - first.top
+      /* v8 ignore next 1 -- uniform rows with a >4px height always yield a >4px pitch. */
       if (Number.isFinite(pitch) && pitch > 4) {
         setRowPitch(Math.round(pitch))
         setRowGap(Math.max(0, Math.round(pitch - first.height)))
       }
-    }, [shown.length, listWide, filter, query, sort, openPath])
+    }, [listWide, openPath, rowPitch, rowGap, shown.length])
     const rowRange = useRowWindow(listRef, shown.length, rowPitch, listWide && openPath === null && rowPitch > 0)
     const chips: { key: FileFilter; files: number; ops: number }[] = [
       {

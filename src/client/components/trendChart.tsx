@@ -827,8 +827,8 @@ export function makeTrendChart(kit: ViewKit): (props: TrendChartProps) => ReactE
       if (scrollRef.current === null) return
       tipColRef.current = hoveredIdx >= 0 ? hoveredIdx * (BAR_W + BAR_GAP) + BAR_W / 2 : 0
       syncTip(scrollRef.current)
-      // Only a hovered-bar change needs a fresh pass; scroll/other commits keep the cached placement.
-    }, [hoveredIdx])
+      // A bar change OR a different band under the same bar changes the tip's text and width.
+    }, [hoveredIdx, dnaHit])
 
     return (
       <div className="lc-chartrow">

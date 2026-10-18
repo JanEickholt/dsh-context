@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from 'react'
 import { assembleCached } from './derivedCache'
 import { UNKNOWN_TOOL_SOURCE, type Category, type ContextHeaders, type ContextTimeline, type HeaderRecord, type HeaderTool, type RequestRecord, type SurfaceNode, type SystemPromptNode } from '../../shared/types'
 import { CATS, CAT_COLOR, partsOf } from '../categories'
@@ -29,6 +29,9 @@ export type { CatFocus } from './browserHelpers'
 export { stepStampOf } from './browserHelpers'
 import { MapIcon, makeBrowserTreemap } from './browserTreemap'
 import type { MapBlock } from '../treemap'
+
+/** Fixed DNA flat-feed row pitch: 28px row + 2px gap; pads and the reveal scroll share it. */
+const FLAT_ROW_PITCH = 30
 
 export interface ContextBrowserProps {
   /** Active UI locale; the picker labels are translated eagerly, so a switch must rebuild them. */
@@ -143,11 +146,34 @@ export function makeContextBrowser(
     }, [pinSeq, onOpenCat])
     const rootRef = useRef<HTMLDivElement | null>(null)
     const scrollRef = useRef<HTMLDivElement | null>(null)
+    const flatIndexRef = useRef<Map<string, number>>(new Map())
     // The DNA flat feed can carry thousands of sub-row-sized items; the rows region is a fixed-pitch scroller, so
     // only the visible window is rendered once the card is wide enough for single-line rows.
     const [flatWide, setFlatWide] = useState(false)
     const [flatReady, setFlatReady] = useState(false)
     const focusScrollRef = useRef(false)
+    /** Windowed DNA feeds unmount off-window rows, so a key-driven reveal first scrolls its window into place. */
+    const revealFlatKey = useCallback((key: string): boolean => {
+      /* v8 ignore next 1 -- callers only fall back here once the target row is absent, which implies a windowed DNA feed. */
+      if (!dna || scrollRef.current === null) return false
+      const index = flatIndexRef.current.get(key)
+      /* v8 ignore next 1 -- non-entry keys (header groups) always render outside the window. */
+      if (index === undefined) return false
+      const el = scrollRef.current
+      el.scrollTop = Math.max(0, index * FLAT_ROW_PITCH - 40)
+      el.dispatchEvent(new Event('scroll'))
+      const settle = (left: number): void => {
+        /* v8 ignore next 1 -- the window commits within the first frames in practice; four tries cover a slow one. */
+        if (left <= 0) return
+        requestAnimationFrame(() => {
+          const row = [...el.querySelectorAll<HTMLElement>('[data-lc-key]')].find(node => node.dataset.lcKey === key) ?? null
+          if (row !== null) revealRowInCard(rootRef.current, row)
+          else settle(left - 1)
+        })
+      }
+      settle(4)
+      return true
+    }, [dna])
     const nodeFocus = props.nodeFocus
     useEffect(() => {
       if (nodeFocus === null || nodeFocus === undefined) return
@@ -323,9 +349,9 @@ export function makeContextBrowser(
       if (liveDnaKey === null) return
       /* v8 ignore next 1 -- liveDnaKey non-null implies a mounted card: the ref always resolves. */
       const row = rootRef.current?.querySelector('.lc-br-elem-echo') ?? null
-      /* v8 ignore next 1 -- a live band names a rendered item, so its echoed row always exists. */
       if (row !== null) revealRowInCard(rootRef.current, row)
-    }, [liveDnaKey])
+      else revealFlatKey(liveDnaKey)
+    }, [liveDnaKey, revealFlatKey])
     const pickDna = (key: string): void => {
       const it = dnaByKey.get(key)
       /* v8 ignore next 1 -- the bar only reports keys of the parts it was handed; defensive. */
@@ -423,7 +449,7 @@ export function makeContextBrowser(
       const echo = dna && liveDnaKey !== null
         && (liveDnaKey === key || (key === 'tools' && liveDnaKey.startsWith('tool:')))
       return (
-        <div key={key} className={'lc-br-elem' + (open ? ' lc-br-elem-on' : '') + (echo ? ' lc-br-elem-echo' : '')}>
+        <div key={key} data-lc-key={key} className={'lc-br-elem' + (open ? ' lc-br-elem-on' : '') + (echo ? ' lc-br-elem-echo' : '')}>
           <button
             type="button"
             className="lc-br-elem-row hover:bg-(--dsw-alias-interactive-bg-hover)"
@@ -799,6 +825,9 @@ export function makeContextBrowser(
       const tail: ReactElement[] = []
       if (view.header !== null && toolsHit) tail.push(toolsGroupRow(view.header))
       if (sys !== null && sysHit) tail.push(systemRow(sys))
+      const keys = new Map<string, number>()
+      for (let i = 0; i < entries.length; i++) keys.set('n' + String(entries[i].r.n.seq), i)
+      flatIndexRef.current = keys
       return { entries, tail, empty: entries.length === 0 && tail.length === 0 }
     }
     const flatRowsModel = dna && flatReady ? flatRows() : null
@@ -925,7 +954,7 @@ export function makeContextBrowser(
               ? <div className="lc-br-flat" style={{ minHeight: 320 }} aria-hidden="true" />
               : (
                 <div className="lc-br-flat">
-                  {flatRange.from > 0 ? <div className="lc-row-pad" style={{ height: Math.max(0, flatRange.from * 30 - 2) }} aria-hidden="true" /> : null}
+                  {flatRange.from > 0 ? <div className="lc-row-pad" style={{ height: Math.max(0, flatRange.from * FLAT_ROW_PITCH - 2) }} aria-hidden="true" /> : null}
                   {flat.entries.slice(flatRange.from, flatRange.to + 1).map(({ r, pos }) => messageRow(r, (
                     <>
                       {catChip(r.n.cat)}
@@ -934,7 +963,7 @@ export function makeContextBrowser(
                     </>
                   ), (over) => { setRowDnaKey(over ? 'n' + String(r.n.seq) : null) }))}
                   {flatRange.to < flat.entries.length - 1
-                    ? <div className="lc-row-pad" style={{ height: Math.max(0, (flat.entries.length - 1 - flatRange.to) * 30 - 2) }} aria-hidden="true" />
+                    ? <div className="lc-row-pad" style={{ height: Math.max(0, (flat.entries.length - 1 - flatRange.to) * FLAT_ROW_PITCH - 2) }} aria-hidden="true" />
                     : null}
                   {/* Header groups are the feed's tail: render them AFTER the bottom pad so they stay at the end. */}
                   {flat.tail}

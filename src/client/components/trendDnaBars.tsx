@@ -87,6 +87,11 @@ export const DnaBar = function DnaBar(props: DnaBarProps): ReactElement | null {
     else runs.push({ color: b.color, from, to })
   }
   const stops = snapDnaRuns(runs, DNA_SNAP_PX)
+  // A token count far below the shared max can round every endpoint to 0px; the bar still has a 1px floor,
+  // so keep its top band's colour instead of emitting an empty gradient.
+  const background = stops.length === 0
+    ? visible[visible.length - 1].color
+    : 'linear-gradient(to top, ' + stops.map(r => `${r.color} ${r.from}px, ${r.color} ${r.to}px`).join(', ') + ')'
   // A hit always exists (the first visible band starts at off 0; the fraction clamps), so the type carries no null.
   const hitAt = (e: { clientY: number; currentTarget: HTMLDivElement }): TrendBand => {
     const rect = e.currentTarget.getBoundingClientRect()
@@ -104,7 +109,7 @@ export const DnaBar = function DnaBar(props: DnaBarProps): ReactElement | null {
       className={'lc-bar-dna' + (props.rise ? RISE_CLASS : '')}
       style={{
         height: `${Math.max(1, Math.round(props.total * pxPerToken))}px`,
-        background: 'linear-gradient(to top, ' + stops.map(r => `${r.color} ${r.from}px, ${r.color} ${r.to}px`).join(', ') + ')',
+        background,
         '--lc-i': Math.min(props.enterIndex, STAGGER_CAP),
       } as CSSProperties}
       onMouseMove={(e) => { props.onHit(hitAt(e).key) }}

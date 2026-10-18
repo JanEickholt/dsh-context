@@ -295,9 +295,9 @@ export function makeContextView(
       // The column renders exactly the composition + trend cards.
       const next = browserCapOf([...col.children].map(el => el.getBoundingClientRect()))
       setBrowserCap(prev => (prev === next ? prev : next))
-      // Hover/selection commits change no card geometry: only a new projection or a ResizeObserver tick
-      // needs a fresh measurement, so a pointer sweep never flushes layout here.
-    }, [data, capTick])
+      // Hover/selection commits change no card geometry: only a new projection, a Remount, or a ResizeObserver
+      // tick needs a fresh measurement, so a pointer sweep never flushes layout here.
+    }, [data, capTick, sidebarVisible])
     /* v8 ignore start -- jsdom has neither ResizeObserver nor layout: the cap's math is pinned by browserCapOf's unit tests. */
     useEffect(() => {
       const col = leftColRef.current
@@ -306,7 +306,7 @@ export function makeContextView(
       observer.observe(col)
       for (const el of col.querySelectorAll(':scope > .lc-card')) observer.observe(el)
       return () => { observer.disconnect() }
-    }, [data])
+    }, [data, sidebarVisible])
     /* v8 ignore stop */
     // The stats board's jumps: a browser key lands on its own category row (skills inject, answers, user messages),
     // a file kind on the File Activity card's matching chip.

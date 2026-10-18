@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { createElement as h } from 'react'
 import { afterAll, beforeAll, describe, test, vi } from 'vitest'
 import type { ContextHeaders } from '../../../src/shared/types'
+import { act } from 'react'
 import { mount, query, queryAll, surfaceNode, until } from '../helpers/kit'
 import { Browser, props, tl } from './browserHarness'
 
@@ -86,4 +87,19 @@ describe('ContextBrowser DNA feed windowing', () => {
       await m.unmount()
     }
   })
+  test('hovering a composition band scrolls the window to its off-screen row', async () => {
+    const m = await mount(h(Browser, props({ data: data(), headers: null, dna: true, onDnaChange: () => {} })))
+    try {
+      await until(() => queryAll(m.container, '.lc-br-flat > .lc-br-elem').length < 200, 'feed windowed')
+      const segs = queryAll<HTMLElement>(m.container, '.lc-br-bar .lc-stacked-seg')
+      assert.ok(segs.length > 0)
+      // Without headers the first band is the oldest message, which the newest-first window does not render.
+      await act(async () => { segs[0].dispatchEvent(new MouseEvent('mouseover', { bubbles: true })) })
+      await until(() => queryAll(m.container, '[data-lc-key="n1"]').length === 1, 'off-window echoed row mounted')
+      assert.ok(query<HTMLElement>(m.container, '.lc-br-scroll').scrollTop > 0)
+    } finally {
+      await m.unmount()
+    }
+  })
+
 })

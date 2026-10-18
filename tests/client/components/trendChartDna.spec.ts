@@ -72,6 +72,22 @@ describe('TrendChart DNA mode', () => {
     await m.unmount()
   })
 
+  test('a bar far below the shared scale keeps its colour instead of an empty gradient', async () => {
+    const r1 = req(1, { turn: 1, step: 0, total: 1, system: 1 })
+    const r2 = req(2, { turn: 1, step: 1, total: 50000, system: 50000 })
+    const m = await mount(h(TrendChart, propsOf([r1, r2], {
+      dna: [dnaBands([['sys', 'system', 1]]), dnaBands([['sys', 'system', 50000]])],
+    })))
+    try {
+      const bars = queryAll<HTMLElement>(m.container, '.lc-bar-dna')
+      assert.ok(bars[0].style.background.length > 0)
+      assert.ok(!bars[0].style.background.includes('linear-gradient(to top, )'))
+      assert.ok(bars[0].style.background.includes('var(--color-indigo-500)'))
+    } finally {
+      await m.unmount()
+    }
+  })
+
   test('a band click reports the picked item with the bar seq, for the Context browser reveal', async () => {
     const r1 = req(1, { turn: 1, step: 0, total: 300 })
     const d1 = dnaBands([['sys', 'system', 100], ['n1', 'user', 200, { seq: 1, cat: 'user', tokens: 200 }]])
