@@ -15,3 +15,8 @@ export const SKILLS_ROUTE = 'api/dsh-context/skills'
 export const BACKFILL_ROUTE = 'api/dsh-context/backfill'
 
 export const ATTACHMENT_ROUTE = 'api/dsh-context/attachment'
+
+/** Not this plugin's own route: dsh-warm's documented warming-stats endpoint (its README pins schema 2;
+ * a schema-1 answer is still accepted), spelled relative by the same reverse-proxy rule.
+ * Absent when dsh-warm is not installed. */
+export const WARMING_ROUTE = 'api/dsh-warm/stats'
