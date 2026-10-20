@@ -208,6 +208,8 @@ In-chart and in-card toggles stay per-view and never overwrite the stored prefer
 
 [dsh-warm](https://github.com/JanEickholt/dsh-warm) keeps the prompt cache warm while a session is blocked inside a tool execution (long test runs, subagents, `wait_agent`), so the next turn does not restart from a cold cache and eat a full time-to-first-token penalty. It exists because the built-in agent-teams orchestration often runs subagents and tool calls that outlive the provider's cache TTL.
 
+![The prompt warming card](https://raw.githubusercontent.com/bowenliang123/dsh-context/main/docs/prompt-warming-card.png)
+
 It warms **only** tool-execution windows. In the author's own measurements, idle or after-session tail warming costs more than it saves — 344 of 350 sessions in the ledger never resumed. Long tool calls and roughly ten-minute subagent waits are where it pays.
 
 ## Like it?

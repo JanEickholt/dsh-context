@@ -206,6 +206,8 @@ dsh plugin --profile web update dsh-context@latest
 
 [dsh-warm](https://github.com/JanEickholt/dsh-warm) 会在会话停留在工具执行期间（长时间测试运行、子 agent、`wait_agent`）保持提示词缓存温热，让下一轮不必从冷缓存重启、白付一遍首 token 延迟。它的诞生是因为内置的 agent-teams 编排：子 agent 和工具调用常常超出服务商的缓存 TTL。
 
+![Prompt Warming 卡片](https://raw.githubusercontent.com/bowenliang123/dsh-context/main/docs/prompt-warming-card.png)
+
 它**只**对工具执行窗口加温。作者自己的测量显示，空闲或会话结束后的"尾巴"加温得不偿失 —— 台账中 350 个会话有 344 个从未续期。长时间工具调用和约十分钟的子 agent 等待才是它真正的收益场景。
 
 ## 喜欢它？
