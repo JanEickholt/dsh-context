@@ -202,6 +202,12 @@ dsh plugin --profile web update dsh-context@latest
 - **兼容性** — 通过同一条由数据形状驱动的代码路径，支持 V4 会话日志格式的 `@deepseek-ai/dsh` **0.1.7-rc.2 及更高版本**（从 rc.2 开始的 `0.1.7` 系列和 `0.2.0` 系列）。各版本支持情况及验证方式见：[docs/compatibility.md](docs/compatibility.md)。
 - **国际化** — UI 支持英文和简体中文。
 
+## 伴生插件：dsh-warm
+
+[dsh-warm](https://github.com/JanEickholt/dsh-warm) 会在会话停留在工具执行期间（长时间测试运行、子 agent、`wait_agent`）保持提示词缓存温热，让下一轮不必从冷缓存重启、白付一遍首 token 延迟。它的诞生是因为内置的 agent-teams 编排：子 agent 和工具调用常常超出服务商的缓存 TTL。
+
+它**只**对工具执行窗口加温。作者自己的测量显示，空闲或会话结束后的"尾巴"加温得不偿失 —— 台账中 350 个会话有 344 个从未续期。长时间工具调用和约十分钟的子 agent 等待才是它真正的收益场景。
+
 ## 喜欢它？
 
 如果 `dsh-context` 帮你了解 Agent 正在携带哪些内容，欢迎在 [GitHub](https://github.com/bowenliang123/dsh-context) 点亮 ⭐——也欢迎提交 issue / PR！

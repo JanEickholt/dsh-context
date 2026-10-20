@@ -204,6 +204,12 @@ In-chart and in-card toggles stay per-view and never overwrite the stored prefer
 - **Compatibility** — works on `@deepseek-ai/dsh` **0.1.7-rc.2+** (the `0.1.7` line from rc.2 and the `0.2.0` line from rc.2), the V4 session-log generation, from one shape-driven code path. The per-release matrix and how it is verified: [docs/compatibility.md](docs/compatibility.md).
 - **I18n** — UI in English and 简体中文.
 
+## Companion plugin: dsh-warm
+
+[dsh-warm](https://github.com/JanEickholt/dsh-warm) keeps the prompt cache warm while a session is blocked inside a tool execution (long test runs, subagents, `wait_agent`), so the next turn does not restart from a cold cache and eat a full time-to-first-token penalty. It exists because the built-in agent-teams orchestration often runs subagents and tool calls that outlive the provider's cache TTL.
+
+It warms **only** tool-execution windows. In the author's own measurements, idle or after-session tail warming costs more than it saves — 344 of 350 sessions in the ledger never resumed. Long tool calls and roughly ten-minute subagent waits are where it pays.
+
 ## Like it?
 
 If `dsh-context` helped you understand what your agent is carrying around, a ⭐ on [GitHub](https://github.com/bowenliang123/dsh-context) is much appreciated — and issues/PRs are welcome!
