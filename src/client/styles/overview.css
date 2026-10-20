@@ -72,7 +72,9 @@
 .lc-ov-usage-swatch { flex: none; width: 10px; height: 8px; border-radius: 2px; }
 .lc-ov-usage-key-label { font-size: 9px; color: var(--dsw-alias-label-secondary); }
 
-.lc-ov-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 10px; }
+/* auto-fit seats the warming card beside the pair when dsh-warm answers and collapses the empty track when it
+   does not — the plugin-less row keeps today's two halves; the 700px query still stacks the row first. */
+.lc-ov-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap: 10px; margin-bottom: 10px; }
 .lc-ov-stats > .lc-card { margin-bottom: 0; min-width: 0; box-sizing: border-box; }
 @container lc-ov (max-width: 700px) {
   .lc-ov-stats { grid-template-columns: minmax(0, 1fr); }

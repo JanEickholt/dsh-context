@@ -32,6 +32,7 @@ import { countsOfRecords, makeStatsContext, makeSubagentCost, toolTallyOf } from
 import type { StatsJump } from './statsContext'
 import { makeStatsTiming } from './statsTiming'
 import { makeStatsTokens } from './statsTokens'
+import { makeWarmingCard } from './warmingCard'
 import { makeLegend, makeStackedBar } from './stackedBar'
 import { aggregateByTurn, attachMarkers, jumpTargetOf, makeTrendChart, turnStepsOf } from './trendChart'
 import { makeTrendOverview } from './trendOverview'
@@ -136,6 +137,7 @@ export function makeContextView(
   const StatsContext = makeStatsContext(kit, makeSubagentCost(ctx, heads))
   const StatsTiming = makeStatsTiming(kit, Donut)
   const StatsTokens = makeStatsTokens(kit, Donut)
+  const WarmingCard = makeWarmingCard(kit, Donut)
   const PluginInfo = makePluginInfo(kit)
   const UpgradeGate = makeUpgradeGate(kit)
   const DetailNote = makeDetailNote(kit)
@@ -802,6 +804,8 @@ export function makeContextView(
         <div className="lc-cols lc-head">
           <StatsTokens usage={usage} current={data.current} breakdown={breakdown} />
           <StatsTiming timing={data.timing ?? null} spans={data.spans} locale={activeLocale} />
+          {/* Renders itself null until dsh-warm's route answers, so the row is unchanged without it. */}
+          <WarmingCard session={sessionId} />
         </div>
 
         <div className="lc-cols lc-cols-main">

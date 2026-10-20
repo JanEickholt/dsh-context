@@ -46,6 +46,7 @@ import { makeStatsTiming } from './statsTiming'
 import { makeOverviewCard } from './overviewCard'
 import { makeOverviewSkills } from './overviewSkills'
 import { makeUpdatePill } from './updatePill'
+import { makeWarmingCard } from './warmingCard'
 import { IconSettings } from '../primitives'
 
 export interface OverviewPanelProps {
@@ -68,6 +69,7 @@ export function makeOverviewPanel(ctx: ClientCtx, kit: ViewKit): (props: Overvie
   const DateRange = makeDateRange(kit)
   const OverviewTokens = makeOverviewTokens(kit, Donut)
   const StatsTiming = makeStatsTiming(kit, Donut)
+  const WarmingCard = makeWarmingCard(kit, Donut)
   const OverviewUsage = makeOverviewUsage(kit)
   const OverviewSkills = makeOverviewSkills(kit)
   const UpdatePill = makeUpdatePill(kit)
@@ -256,6 +258,7 @@ export function makeOverviewPanel(ctx: ClientCtx, kit: ViewKit): (props: Overvie
                 <div className="lc-ov-stats">
                   <OverviewTokens tokens={kpi.tokenParts} />
                   <StatsTiming timing={kpi.timing} />
+                  <WarmingCard />
                 </div>
                 <div className="lc-ov-body">
                   <div className="lc-ov-left">

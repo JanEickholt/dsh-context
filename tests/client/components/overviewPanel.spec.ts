@@ -6,6 +6,7 @@ import assert from 'node:assert/strict'
 import { afterEach, beforeEach, describe, test, vi } from 'vitest'
 import { makeOverviewPanel } from '../../../src/client/components/overviewPanel'
 import { resetModelPrices, setModelPricesLoader } from '../../../src/client/modelPrices'
+import { resetWarmingStats } from '../../../src/client/warming'
 import { dayKeyOf } from '../../../src/shared/days'
 import { TestClientCtx, asClientCtx } from '../helpers/harness'
 import { click, flush, hover, makeKit, mount, query, queryAll, text, unhover, until, type Mounted } from '../helpers/kit'
@@ -19,6 +20,17 @@ const TODAY = dayKeyOf(NOW) ?? ''
 const YESTERDAY = dayKeyOf(NOW - 86_400_000) ?? ''
 /** Local midnight of NOW — the "today" range's floor, so today's session stays inside it whatever hour the spec runs. */
 const MIDNIGHT = new Date(new Date(NOW).setHours(0, 0, 0, 0)).getTime()
+
+/** A dsh-warm schema-1 stats wire body — the third card's route; the card spec owns the route contract. */
+const WIRE_WARMING = {
+  schema: 1,
+  statsEnabled: true,
+  stats: {
+    today: { day: TODAY, warms: 3, needless: 0, noFollowup: 1, expired: 0, savedCacheTokens: 1152 },
+    allTime: { warms: 12, needless: 1, noFollowup: 2, expired: 1, savedCacheTokens: 4608 },
+    failed: 0,
+  },
+}
 
 /** A wire-shaped timeline head. */
 function timeline(over: Record<string, unknown> = {}): Record<string, unknown> {
@@ -138,6 +150,7 @@ beforeEach(() => {
 
 afterEach(async () => {
   resetModelPrices()
+  resetWarmingStats()
   vi.unstubAllGlobals()
   await new Promise(resolve => setTimeout(resolve, 1))
 })
@@ -199,6 +212,41 @@ describe('OverviewPanel', () => {
     assert.ok(text(cards[0]).includes('alpha session'))
     assert.ok(text(cards[0]).includes('workspace-one'), 'the breadcrumb group joined')
     assert.ok(text(cards[0]).includes('alpha'), 'the project basename joined')
+    await m.unmount()
+  })
+
+  test('an answered dsh-warm route seats the warming card in the stats row', async () => {
+    vi.stubGlobal('fetch', async (url: string | URL) => {
+      const route = String(url)
+      if (route.endsWith('/backfill')) backfillPosts.push(route)
+      if (route.endsWith('dsh-warm/stats')) return { ok: true, status: 200, json: async () => WIRE_WARMING }
+      return { ok: true, json: async () => ({}) }
+    })
+    const { m } = await openPanel(makeCtx())
+    // The card's route read lands a beat behind the mount; the third seat paints on that beat.
+    await until(() => queryAll(m.container, '.lc-ov-stats > .lc-card').length === 3, 'the warming card lands')
+    const statsCards = queryAll(m.container, '.lc-ov-stats > .lc-card')
+    assert.ok(text(statsCards[2]).includes('Prompt Warming'), 'the third seat is the warming ledger')
+    assert.equal(query(statsCards[2], '.lc-donut-center b').textContent, '1.2k', "the ring's center is the day's cache saving")
+    await m.unmount()
+  })
+
+  test('no dsh-warm route keeps the stats row exactly its two cards', async () => {
+    vi.stubGlobal('fetch', async (url: string | URL) => {
+      const route = String(url)
+      if (route.endsWith('/backfill')) backfillPosts.push(route)
+      if (route.endsWith('dsh-warm/stats')) return { ok: false, status: 404, json: async () => undefined }
+      return { ok: true, json: async () => ({}) }
+    })
+    const { m } = await openPanel(makeCtx())
+    const statsCards = queryAll(m.container, '.lc-ov-stats > .lc-card')
+    assert.equal(statsCards.length, 2)
+    assert.equal(query(statsCards[0], '.lc-donut-center b').textContent, '1.8k')
+    assert.equal(query(statsCards[1], '.lc-donut-center b').textContent, '3m0s')
+    // The absent read settles a beat behind the mount; nothing may paint on that beat.
+    await flush()
+    assert.equal(queryAll(m.container, '.lc-ov-stats > .lc-card').length, 2, 'the settled row still holds two cards')
+    assert.ok(!text(query(m.container, '.lc-ov-stats')).includes('Prompt Warming'))
     await m.unmount()
   })
 
