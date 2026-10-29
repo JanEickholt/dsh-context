@@ -321,8 +321,9 @@ export function orderedDayRange(a: string, b: string): DayRange {
   return a <= b ? { from: a, to: b } : { from: b, to: a }
 }
 
-/** The preset's window (epoch ms). "Today" opens on the local midnight —
- * date-field arithmetic keeps a DST-short or long day exact, where an epoch-ms subtract would drift into the neighbouring day.
+/** The preset's window (epoch ms). "Today" opens on the local midnight; 7d/30d step back that many
+ * calendar days at the same wall-clock time. Date-field arithmetic keeps a DST-short or long day
+ * exact, where an epoch-ms subtract would drift the floor into the neighbouring day.
  */
 export function rangeWindowOf(range: OverviewRange, now: number): RangeWindow {
   if (range === 'all') return OPEN_WINDOW
@@ -331,12 +332,10 @@ export function rangeWindowOf(range: OverviewRange, now: number): RangeWindow {
 }
 
 function rangeStartOf(range: Exclude<OverviewRange, 'all'>, now: number): number {
-  if (range === 'today') {
-    const midnight = new Date(now)
-    midnight.setHours(0, 0, 0, 0)
-    return midnight.getTime()
-  }
-  return now - (range === '7d' ? 7 : 30) * 86_400_000
+  const start = new Date(now)
+  if (range === 'today') start.setHours(0, 0, 0, 0)
+  else start.setDate(start.getDate() - (range === '7d' ? 7 : 30))
+  return start.getTime()
 }
 
 /** A picked range's window: the start day's midnight through the end day's last

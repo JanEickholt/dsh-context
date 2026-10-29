@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, test, vi } from 'vitest'
 import { makeOverviewPanel } from '../../../src/client/components/overviewPanel'
 import { resetModelPrices, setModelPricesLoader } from '../../../src/client/modelPrices'
 import { resetWarmingStats } from '../../../src/client/warming'
-import { dayKeyOf } from '../../../src/shared/days'
+import { dayKeyOf, shiftDayKey } from '../../../src/shared/days'
 import { TestClientCtx, asClientCtx } from '../helpers/harness'
 import { click, flush, hover, makeKit, mount, query, queryAll, text, unhover, until, type Mounted } from '../helpers/kit'
 
@@ -306,8 +306,7 @@ describe('OverviewPanel', () => {
     assert.equal(rangeButtons.length, 4)
     // The chip reads the LIVE window, so every preset prints its own days.
     const span = () => queryAll(m.container, '.lc-dp-half').map(el => el.textContent)
-    const thirty = new Date(NOW - 30 * 86_400_000)
-    assert.deepEqual(span(), [dayKeyOf(thirty.getTime()), TODAY], '30d shows the thirty days it covers')
+    assert.deepEqual(span(), [shiftDayKey(TODAY, -30), TODAY], '30d shows the thirty days it covers')
     await click(rangeButtons[3]) // All
     assert.deepEqual(span(), ['Start date', 'End date'], 'an unbounded scope has no span to print')
     assert.equal(queryAll(m.container, '.lc-ov-grid > .lc-ov-session').length, 3, 'the stale session joins')
@@ -316,7 +315,7 @@ describe('OverviewPanel', () => {
     assert.deepEqual(span(), [TODAY, TODAY], "today's own day on both ends")
     assert.equal(queryAll(m.container, '.lc-ov-grid > .lc-ov-session').length, 1, "only today's session stays")
     await click(rangeButtons[1]) // Last 7 days
-    assert.deepEqual(span(), [dayKeyOf(NOW - 7 * 86_400_000), TODAY])
+    assert.deepEqual(span(), [shiftDayKey(TODAY, -7), TODAY])
     assert.equal(queryAll(m.container, '.lc-ov-grid > .lc-ov-session').length, 2, 'the yesterday-active session joins the prompt-fresh one')
     await click(rangeButtons[2]) // back to 30d
     assert.equal(queryAll(m.container, '.lc-ov-grid > .lc-ov-session').length, 2)

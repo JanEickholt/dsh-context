@@ -10,6 +10,7 @@ import {
   relativeTime,
   sortRows,
 } from '../../src/client/overview'
+import { dayKeyOf, shiftDayKey } from '../../src/shared/days'
 import type { ContextTimeline } from '../../src/shared/types'
 import { COST, rowOf, win } from './overview.fixtures'
 
@@ -19,10 +20,22 @@ describe('rangeWindowOf', () => {
     const now = new Date(2026, 8, 20, 12).getTime()
     const midnight = new Date(2026, 8, 20).getTime()
     assert.deepEqual(rangeWindowOf('today', now), { start: midnight, end: null }, 'today opens on the local midnight')
-    assert.deepEqual(rangeWindowOf('7d', now), { start: now - 7 * 86_400_000, end: null })
-    assert.deepEqual(rangeWindowOf('30d', now), { start: now - 30 * 86_400_000, end: null })
+    assert.deepEqual(rangeWindowOf('7d', now), { start: new Date(2026, 8, 13, 12).getTime(), end: null })
+    assert.deepEqual(rangeWindowOf('30d', now), { start: new Date(2026, 7, 21, 12).getTime(), end: null })
     assert.deepEqual(rangeWindowOf('all', now), OPEN_WINDOW, 'no bound at either end')
     assert.deepEqual(OPEN_WINDOW, { start: null, end: null })
+  })
+
+  test('the 7d/30d floor lands exactly that many calendar days back, DST weeks included', () => {
+    // Every half hour across a year: under a DST zone an epoch-ms subtract near midnight would
+    // land the floor one day early or late in the weeks around each switch.
+    for (let now = new Date(2026, 0, 1).getTime(); now < new Date(2027, 0, 1).getTime(); now += 1_800_000) {
+      const today = dayKeyOf(now) ?? ''
+      for (const [range, back] of [['7d', 7], ['30d', 30]] as const) {
+        const start = rangeWindowOf(range, now).start ?? NaN
+        assert.equal(dayKeyOf(start), shiftDayKey(today, -back), `${range} at ${new Date(now).toString()}`)
+      }
+    }
   })
 })
 
