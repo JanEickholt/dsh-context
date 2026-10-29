@@ -309,7 +309,7 @@ export function createContextTimelineDefinition(config: Config, slim: () => bool
     // makes them refold from the durable log. A field the log can still backfill, or one the view derives at serve
     // time, must NOT bump: invalidating every in-generation row orphans the key for idle sessions, which have no
     // refresh channel until they go live again.
-    stateVersion: 28,
+    stateVersion: 29,
   }
   return definition
 }

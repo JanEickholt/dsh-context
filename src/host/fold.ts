@@ -708,13 +708,15 @@ export function applyTimeline(state: TimelineState, event: TimelineEvent, bounds
       case 'session/end-seed': {
         // The fork/seed boundary: events before a TAGGED marker (`inherited: true`) are the parent-log prefix a
         // seeded child replays verbatim, usage settlements included — spend the session it forked from already
-        // priced. Zeroing the cost totals makes a seeded session's own cost count post-seed spend only. The
-        // UNTAGGED marker is the ordinary resume/replay boundary and must leave the state reference untouched, or
-        // every resume would wipe the session's history. `{}`, not `undefined`: an undefined-valued property fails
-        // the plain-JSON cache precondition.
+        // priced. Zeroing the cost and timing totals makes a seeded session's own figures count post-seed work
+        // only, so the overview's summed Timing Stats never counts a parent's steps twice. The UNTAGGED marker is
+        // the ordinary resume/replay boundary and must leave the state reference untouched, or every resume would
+        // wipe the session's history. `{}` and `delete`, not `undefined`: an undefined-valued property fails the
+        // plain-JSON cache precondition.
         if (data?.inherited !== true) break
         const s = ensure([])
         s.cost = {}
+        delete s.timing
         break
       }
       case 'plan/mode': {

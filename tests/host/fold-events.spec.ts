@@ -13,6 +13,8 @@ import {
   header,
   planMode,
   requestContext,
+  stepEnd,
+  stepStart,
   toolCall,
   toolResult,
   userMessage,
@@ -512,6 +514,20 @@ describe('session/end-seed', () => {
   test('a tagged marker zeroes the inherited prefix\'s spend', () => {
     const { state } = driveTimeline([...inherited, endSeed(3, { inherited: true })])
     assert.deepEqual(state.cost, {})
+  })
+
+  test('a tagged marker drops the inherited timing totals; post-cut steps time afresh', () => {
+    const steps = (seq: number, start: number): TimelineEvent[] => [
+      stepStart(seq, { time: start }),
+      assistantMessage(seq + 1, { time: start + 1_000 }),
+      stepEnd(seq + 2, { time: start + 2_000 }),
+    ]
+    const { state: cut } = driveTimeline([...steps(1, 0), endSeed(4, { inherited: true })])
+    assert.ok(!('timing' in cut), 'the parent already timed its steps; no undefined-valued property')
+    assertPlainJson(cut)
+    const { state } = driveTimeline([...steps(1, 0), endSeed(4, { inherited: true }), ...steps(5, 10_000)])
+    assert.equal(state.timing?.calls, 1)
+    assert.equal(state.timing?.wallMs, 2_000)
   })
 
   test('spend after the cut prices afresh', () => {
