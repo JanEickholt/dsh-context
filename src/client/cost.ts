@@ -284,7 +284,9 @@ export function mergeCostUsage(...usages: (SessionCostUsage | null | undefined)[
 
 export function formatCost(amount: number, currency: CostCurrency): string {
   const symbol = currency === 'cny' ? '¥' : '$'
-  return symbol + (amount >= 1 ? amount.toFixed(2) : amount.toPrecision(2))
+  const face = amount >= 1 ? amount.toFixed(2) : amount.toPrecision(2)
+  // toPrecision turns exponential below 1e-6 ("3.0e-7"); spell the same two significant digits positionally.
+  return symbol + (face.includes('e') ? amount.toFixed(Math.min(100, 1 - Math.floor(Math.log10(Math.abs(amount))))) : face)
 }
 
 /** The display currency follows the active locale — read per render: slot outlets re-render on a locale switch. */

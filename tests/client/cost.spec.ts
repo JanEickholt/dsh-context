@@ -414,6 +414,14 @@ describe('formatCost', () => {
   test('amounts below 1 use two-significant-digit precision', () => {
     assert.equal(formatCost(0.014, 'usd'), '$0.014')
     assert.equal(formatCost(0.5, 'usd'), '$0.50')
+    assert.equal(formatCost(0, 'usd'), '$0.0')
+  })
+
+  test('amounts below 1e-6 keep positional notation, never an exponent', () => {
+    assert.equal(formatCost(3e-7, 'usd'), '$0.00000030')
+    assert.equal(formatCost(4.56e-9, 'cny'), '¥0.0000000046')
+    assert.equal(formatCost(9.99e-7, 'usd'), '$0.0000010', 'a rounding up to 1e-6 is already positional')
+    assert.equal(formatCost(1e-120, 'usd'), '$0.' + '0'.repeat(100), 'toFixed caps at 100 digits')
   })
 
   test('the CNY currency uses the yen symbol', () => {
