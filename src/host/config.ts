@@ -26,7 +26,7 @@ export const DEFAULT_BOUNDS = {
 /** The resolved fold bounds; derived from {@link DEFAULT_BOUNDS} so the two cannot drift. */
 export type FoldBounds = typeof DEFAULT_BOUNDS
 
-export type Config = Partial<FoldBounds> & Partial<PluginSettings>
+export type Config = Partial<FoldBounds> & Partial<PluginSettings> & { backfillMaxIdleDays?: number }
 
 /** Mark a field live-editable where the harness's schemastery ships `.volatile()`; a plain
  * field where the modifier is absent, so one schema serves every harness the gate admits. */
@@ -46,6 +46,9 @@ export const Config = z.object({
   maxNodes: count(DEFAULT_BOUNDS.maxNodes),
   maxArchiveNodes: count(DEFAULT_BOUNDS.maxArchiveNodes),
   maxFileOps: count(DEFAULT_BOUNDS.maxFileOps),
+  // The Insights backfill leaves a session idle longer than this many days uncached (0 = no
+  // limit), so a cache retention that expires idle rows is not refilled on the page's next open.
+  backfillMaxIdleDays: z.number().min(0).step(1).default(0),
   // Loose: a stale persisted value degrades to the default instead of failing the entry.
   defaultPlacement: volatileField(z.union(['all', 'tab', 'sidebar']).default('all').loose()),
   defaultGranularity: volatileField(z.union(['step', 'turn']).default('step').loose()),
@@ -60,6 +63,11 @@ export const Config = z.object({
   promptPrefix: volatileField(z.string().default('').loose()),
   promptSuffix: volatileField(z.string().default('').loose()),
 })
+
+/** The resolved backfill idle limit in days; 0 means every stored session is backfilled. */
+export function resolveBackfillMaxIdleDays(config: Config | undefined): number {
+  return (Config(config ?? {}) as { backfillMaxIdleDays: number }).backfillMaxIdleDays
+}
 
 export function resolveBounds(config: Config | undefined): FoldBounds {
   // The schema fills every default; the volatile preference fields are not fold data.

@@ -266,6 +266,85 @@ describe('watchActivityBackfill', () => {
     assert.deepEqual(state.coldSnapshots, ['a'])
   })
 
+  /** A corpus aged against a fixed wall clock: `lastPromptAt` comes from the cached list metadata. */
+  function armAged(ctx: Context, listed: unknown[], lastPrompt: Record<string, number>, hostile = false) {
+    const state = fakeState(listed)
+    const route: RouteBox = {}
+    ctx.provide('connection', connectionOf(route))
+    ctx.provide('sessionQuery', { listSessions: async () => state.listed })
+    ctx.provide('sessionPersistence', {
+      open: async (id: string) => {
+        state.coldReads.push(id)
+        return {
+          header: { id, version: 1, createdAt: 1, cwd: '/repo', isSeeded: false },
+          inheritedEventCount: 0,
+          read: async () => ({ events: [] }),
+          close: async () => {},
+        }
+      },
+    })
+    ctx.provide('sessions', { get: () => undefined })
+    ctx.provide('sessionProjectionCache', {
+      cachedSnapshot: (header: { id: string }, keys?: readonly string[]) => {
+        if (keys?.includes('sessionListMetadata') !== true) return undefined
+        if (hostile) throw new Error('cache hostile')
+        const at = lastPrompt[header.id]
+        return at === undefined ? undefined : { asOfSeq: 0, values: { sessionListMetadata: { blank: false, lastPromptAt: at } } }
+      },
+      coldSnapshot: (header: { id: string }) => {
+        state.coldSnapshots.push(header.id)
+        return { asOfSeq: 0, values: {} }
+      },
+    })
+    return { state, route }
+  }
+  const NOW = 100 * 86_400_000
+  const daysAgo = (days: number) => NOW - days * 86_400_000
+
+  test('maxIdleDays leaves idle sessions uncached and backfills the rest', async () => {
+    const ctx = new Context()
+    const logs = captureLogs(ctx)
+    const { state, route } = armAged(ctx, [
+      { header: { id: 'old', cwd: '/repo', createdAt: daysAgo(40) } },
+      { header: { id: 'recent', cwd: '/repo', createdAt: daysAgo(2) } },
+      // Created long ago, prompted yesterday: the cached last prompt keeps it active.
+      { header: { id: 'revived', cwd: '/repo', createdAt: daysAgo(40) } },
+      // No readable age: an unknown age never withholds the backfill.
+      { header: { id: 'ageless', cwd: '/repo' } },
+    ], { revived: daysAgo(1) })
+    const dispose = watchActivityBackfill(ctx, undefined, undefined, { maxIdleDays: 14, wallNow: () => NOW })
+    await trigger(route)
+    await until(() => (state.coldSnapshots.length >= 3 ? true : undefined), 'three cold folds')
+    await until(() => logs.find(line => line.text.includes('idle over 14 day(s)')), 'the idle summary line')
+    dispose()
+    assert.deepEqual(state.coldReads.sort(), ['ageless', 'recent', 'revived'])
+    assert.ok(logs.some(line => line.level === 'info' && line.text.includes('left 1 session(s) idle over 14 day(s) uncached')))
+  })
+
+  test('maxIdleDays 0 (the default) backfills sessions of any age', async () => {
+    const ctx = new Context()
+    const { state, route } = armAged(ctx, [{ header: { id: 'ancient', cwd: '/repo', createdAt: 1 } }], {})
+    const dispose = watchActivityBackfill(ctx, undefined, undefined, { maxIdleDays: 0, wallNow: () => NOW })
+    await trigger(route)
+    await until(() => (state.coldSnapshots.length === 1 ? true : undefined), 'the ancient session folded')
+    dispose()
+    assert.deepEqual(state.coldSnapshots, ['ancient'])
+  })
+
+  test('a throwing activity probe falls back to the header creation time', async () => {
+    const ctx = new Context()
+    const { state, route } = armAged(ctx, [
+      { header: { id: 'old', cwd: '/repo', createdAt: daysAgo(40) } },
+      { header: { id: 'recent', cwd: '/repo', createdAt: daysAgo(2) } },
+    ], {}, true)
+    const dispose = watchActivityBackfill(ctx, undefined, undefined, { maxIdleDays: 14, wallNow: () => NOW })
+    await trigger(route)
+    await until(() => (state.coldSnapshots.length === 1 ? true : undefined), 'the recent session folded')
+    await new Promise(resolve => setTimeout(resolve, 30))
+    dispose()
+    assert.deepEqual(state.coldReads, ['recent'])
+  })
+
   test('a non-array listing ends the run without work', async () => {
     const ctx = new Context()
     const state = fakeState({ not: 'an array' })

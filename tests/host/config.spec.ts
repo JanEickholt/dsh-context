@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict'
 import { describe, test } from 'vitest'
 import z from '@deepseek-ai/schemastery'
-import { Config, DEFAULT_BOUNDS, resolveBounds, volatileField } from '../../src/host/config'
+import { Config, DEFAULT_BOUNDS, resolveBackfillMaxIdleDays, resolveBounds, volatileField } from '../../src/host/config'
 
 /** Dereference a resolved value: volatile fields resolve to references. */
 function deref(value: unknown): unknown {
@@ -25,6 +25,7 @@ describe('Config validator (cordis Standard Schema face)', () => {
     )
     assert.deepEqual(resolvedPrefs, {
       ...DEFAULT_BOUNDS,
+      backfillMaxIdleDays: 0,
       defaultPlacement: 'all',
       defaultGranularity: 'step',
       defaultTrendMode: 'total',
@@ -48,6 +49,13 @@ describe('Config validator (cordis Standard Schema face)', () => {
     assert.equal(resolveBounds({ maxNodes: 7 }).maxNodes, 7)
     assert.equal(resolveBounds({ maxArchiveNodes: 7 }).maxArchiveNodes, 7)
     assert.equal(resolveBounds({ maxNodes: 7 }).maxEvents, DEFAULT_BOUNDS.maxEvents)
+  })
+
+  test('the backfill idle limit defaults to no limit and accepts whole days', () => {
+    assert.equal(resolveBackfillMaxIdleDays(undefined), 0)
+    assert.equal(resolveBackfillMaxIdleDays({ backfillMaxIdleDays: 14 }), 14)
+    assert.throws(() => Config({ backfillMaxIdleDays: -1 }))
+    assert.throws(() => Config({ backfillMaxIdleDays: 1.5 }))
   })
 
   test('rejects zero/negative bounds (min 1)', () => {

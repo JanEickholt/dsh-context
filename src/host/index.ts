@@ -18,7 +18,7 @@ import { createToolAttribution } from './attribution'
 import { watchBalanceChannel } from './balance'
 import { watchActivityBackfill } from './backfill'
 import { makeColdReadGate } from './coldRead'
-import { Config, resolveBounds } from './config'
+import { Config, resolveBackfillMaxIdleDays, resolveBounds } from './config'
 import { watchDetailChannel } from './detail'
 import { createFallbackActivityDefinition, createFallbackHeadersDefinition, createFallbackTimelineDefinition } from './fallback'
 import { watchFleetChannel } from './fleet'
@@ -68,7 +68,7 @@ export function apply(ctx: Context, config: Config): void {
   ctx.sessionProjections.register(createContextTimelineDefinition(config, () => gate.live))
   ctx.sessionProjections.register(createContextHeadersDefinition(name => attribution.ownerOf(name)))
   ctx.sessionProjections.register(createContextActivityDefinition())
-  watchActivityBackfill(ctx, coldReads)
+  watchActivityBackfill(ctx, coldReads, undefined, { maxIdleDays: resolveBackfillMaxIdleDays(config) })
   watchPromptInjection(ctx, config)
 }
 

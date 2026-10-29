@@ -99,6 +99,16 @@ const DEFAULT_PACING: BackfillPacing = {
   roundPauseMs: ROUND_PAUSE_MS,
 }
 
+/** The pass's retention: a session idle longer than `maxIdleDays` stays uncached (0 or absent = no
+ * limit), so an external cache retention that expires idle rows is not undone by the next page
+ * open. Such a session refolds when it next goes live. `wallNow` is injectable for tests. */
+export interface BackfillOptions {
+  maxIdleDays?: number
+  wallNow?: () => number
+}
+
+const DAY_MS = 86_400_000
+
 /** The `name` family dsh raises for a durable log it cannot interpret: the persistence seam
  * translates the format edge's refusal into `SessionFormatUnsupportedError`, so classify by prefix and import no dsh symbol. */
 const UNSUPPORTED_FORMAT = 'SessionFormatUnsupported'
@@ -125,6 +135,23 @@ function servesRows(cache: ProjectionCacheLike, header: SessionHeader): boolean 
   } catch {
     return false
   }
+}
+
+const ACTIVITY_KEYS = ['sessionListMetadata']
+
+/** The session's last activity as the harness's Session list orders it: the later of its
+ * creation and its cached last prompt. `undefined` when neither is readable, which the pass
+ * treats as active — an unknown age never withholds a backfill. */
+function lastActivityOf(cache: ProjectionCacheLike, header: SessionHeader): number | undefined {
+  const created = typeof header.createdAt === 'number' ? header.createdAt : undefined
+  let lastPrompt: number | undefined
+  try {
+    const values = asRecord(asRecord(cache.cachedSnapshot(header, ACTIVITY_KEYS))?.values)
+    const at = asRecord(values?.sessionListMetadata)?.lastPromptAt
+    if (typeof at === 'number') lastPrompt = at
+  } catch { /* a hostile face reads as no cached activity */ }
+  if (created === undefined && lastPrompt === undefined) return undefined
+  return Math.max(created ?? 0, lastPrompt ?? 0)
 }
 
 /** Read one stored log through a read handle, mirroring dsh-session-query's readColdSessionLog. */
@@ -254,7 +281,10 @@ export function watchActivityBackfill(
   ctx: Context,
   coldReads: ColdReadGate = makeColdReadGate(),
   pacing: BackfillPacing = DEFAULT_PACING,
+  options: BackfillOptions = {},
 ): () => void {
+  const maxIdleDays = options.maxIdleDays ?? 0
+  const wallNow = options.wallNow ?? Date.now
   let requested = false
   let started = false
   let launch: (() => void) | null = null
@@ -314,7 +344,9 @@ export function watchActivityBackfill(
       if (!Array.isArray(listed)) return
       let folded = 0
       let refused = 0
+      let idle = 0
       let paused = false
+      const idleCutoff = maxIdleDays > 0 ? wallNow() - maxIdleDays * DAY_MS : undefined
       // One rest serves both granularities (between slices and between sessions): the pause is
       // proportional to the work just done, and a full recovery break follows every workBudgetMs
       // of cumulative fold time — the pass says when it pauses and resumes on its own. The sleep
@@ -352,6 +384,13 @@ export function watchActivityBackfill(
         if (header === null || typeof header.cwd !== 'string') continue
         if (isLive(sessions, header.id)) continue
         if (servesRows(cache as unknown as ProjectionCacheLike, header)) continue
+        if (idleCutoff !== undefined) {
+          const at = lastActivityOf(cache as unknown as ProjectionCacheLike, header)
+          if (at !== undefined && at < idleCutoff) {
+            idle++
+            continue
+          }
+        }
         const started = pacing.now()
         let slicedWorkMs = 0
         try {
@@ -388,6 +427,9 @@ export function watchActivityBackfill(
         await rest(Math.max(0, pacing.now() - started - slicedWorkMs))
       }
       if (folded > 0) ctx.logger.info(`dsh-context: projection rows backfilled for ${folded} session(s)`)
+      if (idle > 0) {
+        ctx.logger.info(`dsh-context: projection backfill left ${idle} session(s) idle over ${maxIdleDays} day(s) uncached (backfillMaxIdleDays)`)
+      }
       if (paused) {
         ctx.logger.info('dsh-context: projection backfill stopped early under heap pressure (remaining sessions refold on their next live activity)')
       }
