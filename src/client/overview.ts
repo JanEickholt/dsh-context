@@ -349,12 +349,13 @@ export function dayRangeWindow(range: DayRange): RangeWindow | null {
   return { start, end }
 }
 
-/** Whether a ledger day key falls inside a resolved window. Day-granular on purpose: a preset's
- * rolling floor admits its whole local day, because the ledger cannot split one day. */
-export function dayInScope(key: string, scope: RangeWindow): boolean {
+/** Whether a ledger day key falls inside a resolved window, its day keys resolved once for the
+ * per-day loops. Day-granular on purpose: a preset's rolling floor admits its whole local day,
+ * because the ledger cannot split one day. */
+function dayScopeOf(scope: RangeWindow): (key: string) => boolean {
   const floor = scope.start === null ? null : dayKeyOf(scope.start)
   const ceiling = scope.end === null ? null : dayKeyOf(scope.end)
-  return (floor === null || key >= floor) && (ceiling === null || key <= ceiling)
+  return key => (floor === null || key >= floor) && (ceiling === null || key <= ceiling)
 }
 
 /** A day that contributed anything: billed tokens, a settlement, a turn, a tool run, step time,
@@ -395,6 +396,7 @@ export function filterRows(
 ): OverviewRow[] {
   const query = opts.query.trim().toLowerCase()
   const bounded = opts.scope.start !== null || opts.scope.end !== null
+  const dayAdmitted = dayScopeOf(opts.scope)
   return rows.filter((row) => {
     // A bounded scope admits a session on either signal: a daily-ledger day inside the window
     // (a long run with no new prompt still counts), or a last user prompt inside it (a session
@@ -406,7 +408,7 @@ export function filterRows(
         const days = row.activity?.days
         if (days !== undefined) {
           for (const key of Object.keys(days)) {
-            if (dayInScope(key, opts.scope) && hasActivity(days[key])) {
+            if (dayAdmitted(key) && hasActivity(days[key])) {
               inScope = true
               break
             }
@@ -462,7 +464,7 @@ export type SkillSort = 'loads' | 'recent'
  * that day, else the scope window admits its days whole. */
 function skillDayPredicate(opts: { scope: RangeWindow; day: string | null }): (key: string) => boolean {
   if (opts.day !== null) return key => key === opts.day
-  return key => dayInScope(key, opts.scope)
+  return dayScopeOf(opts.scope)
 }
 
 /** The Insights page's skill card data: every scoped row's family ledger folded
@@ -572,19 +574,20 @@ export function windowTotalsOf(activity: ContextActivity | null, scope: RangeWin
   let toolCalls = 0
   let toolsMs = 0
   let wallMs = 0
-  let usage: SessionCostUsage | null = null
+  const fees: SessionCostUsage[] = []
   if (activity !== null) {
+    const inScope = dayScopeOf(scope)
     for (const [key, day] of Object.entries(activity.days)) {
-      if (!dayInScope(key, scope)) continue
+      if (!inScope(key)) continue
       requests += day.requests
       turns += day.turns ?? 0
       toolCalls += day.toolCalls ?? 0
       toolsMs += day.toolsMs ?? 0
       wallMs += day.wallMs ?? 0
-      if (day.cost !== undefined) usage = mergeCostUsage(usage, day.cost)
+      if (day.cost !== undefined) fees.push(day.cost)
     }
   }
-  return { requests, turns, toolCalls, toolsMs, wallMs, usage }
+  return { requests, turns, toolCalls, toolsMs, wallMs, usage: mergeCostUsage(...fees) }
 }
 
 /** The range's summed timing totals, folded from the rows' host-folded
@@ -708,8 +711,9 @@ export function kpisOf(
   scope?: RangeWindow,
 ): OverviewKpis {
   // Every figure folds the SAME daily ledger over the window; the lifetime heads serve only
-  // callers that pass no scope (or rows with no ledger).
-  let usage: SessionCostUsage | null = null
+  // callers that pass no scope (or rows with no ledger). The usages merge once at the end: an
+  // accumulator re-merged per row re-copies the whole ledger each time (quadratic in rows).
+  const usages: (SessionCostUsage | null)[] = []
   let turns = 0
   let toolCalls = 0
   let toolsMs = 0
@@ -721,7 +725,7 @@ export function kpisOf(
   for (const row of rows) {
     const windowTotals = scope !== undefined && row.activity !== null ? windowTotalsOf(row.activity, scope) : null
     const rowUsage = windowTotals !== null ? windowTotals.usage : open ? row.familyCost : null
-    usage = mergeCostUsage(usage, rowUsage)
+    usages.push(rowUsage)
     if (windowTotals !== null) {
       turns += windowTotals.turns
       toolCalls += windowTotals.toolCalls
@@ -740,6 +744,7 @@ export function kpisOf(
     if (estimateSessionCost(rowUsage, book, currency) !== null) costSessions++
     if (usageTotalsOf(rowUsage) !== null) usageSessions++
   }
+  const usage = mergeCostUsage(...usages)
   const totals = usageTotalsOf(usage)
   return {
     sessions: rows.length,
