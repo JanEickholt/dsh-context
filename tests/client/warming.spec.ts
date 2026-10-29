@@ -245,4 +245,26 @@ describe('readWarmingStats', () => {
     resetWarmingStats()
     assert.equal(readWarmingStats(() => {}), null)
   })
+
+  test('a read a reset superseded lands nowhere and leaves the next read intact', async () => {
+    const answers: ((body: unknown) => void)[] = []
+    vi.stubGlobal('fetch', () => new Promise((resolve) => {
+      answers.push(body => { resolve({ ok: true, status: 200, json: async () => body }) })
+    }))
+    const stale = collector()
+    readWarmingStats(stale.onRefresh)
+    resetWarmingStats()
+    const fresh = collector()
+    const joiner = collector()
+    readWarmingStats(fresh.onRefresh)
+    answers[0](WIRE_WARMING)
+    await drain()
+    assert.deepEqual(stale.seen, [], 'the superseded read notifies nobody')
+    assert.equal(readWarmingStats(joiner.onRefresh), null, 'nor caches its figure; the fresh read is still in flight')
+    assert.equal(answers.length, 2, 'the joiner rides the fresh read instead of starting a third')
+    answers[1](WIRE_WARMING)
+    await drain()
+    assert.deepEqual(fresh.seen, [PARSED_WARMING])
+    assert.deepEqual(joiner.seen, [PARSED_WARMING])
+  })
 })

@@ -183,10 +183,9 @@ export function warmingStatsOf(value: unknown): WarmingStats | null {
 }
 
 let cached: WarmingStats | null = null
-/** The route read in flight, so a second open joins it instead of starting one. */
-let refreshing: Promise<void> | null = null
-/** Every open riding the in-flight read, joiners included; cleared when the read settles. */
-const landingCallbacks = new Set<(value: WarmingStats) => void>()
+/** The route read in flight, with every open riding it (joiners included). Owned per read, so a
+ * reset that drops it mid-flight leaves the stale read nothing to clear or repopulate. */
+let refreshing: { landing: Set<(value: WarmingStats) => void> } | null = null
 
 /** One route GET, narrowed through `warmingStatsOf`. Never rejects. */
 async function readRoute(): Promise<WarmingStats | null> {
@@ -201,25 +200,25 @@ async function readRoute(): Promise<WarmingStats | null> {
 
 /** One route read per open, `onRefresh` once it lands on a figure. `refreshing` is assigned before anything
  * awaits, so an open arriving mid-flight joins the read rather than starting a second one, and the read's
- * landing reports to every open riding it. A failed or absent read notifies nobody. */
+ * landing reports to every open riding it. A failed or absent read notifies nobody; a read a reset
+ * superseded lands nowhere. */
 export function readWarmingStats(onRefresh: (value: WarmingStats) => void): WarmingStats | null {
-  landingCallbacks.add(onRefresh)
   if (refreshing === null) {
-    refreshing = (async () => {
-      const value = await readRoute()
+    const read = { landing: new Set<(value: WarmingStats) => void>() }
+    refreshing = read
+    void readRoute().then((value) => {
+      if (refreshing !== read) return
+      refreshing = null
       if (value === null) return
       cached = value
-      for (const waiter of landingCallbacks) waiter(value)
-    })().finally(() => {
-      refreshing = null
-      landingCallbacks.clear()
+      for (const waiter of read.landing) waiter(value)
     })
   }
+  refreshing.landing.add(onRefresh)
   return cached
 }
 
 export function resetWarmingStats(): void {
   cached = null
   refreshing = null
-  landingCallbacks.clear()
 }
