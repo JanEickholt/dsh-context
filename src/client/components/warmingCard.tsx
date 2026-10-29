@@ -107,13 +107,18 @@ function mergeSeg(a: MoneySeg, b: MoneySeg): MoneySeg {
   return { tokens: a.tokens + b.tokens, cost: a.cost === null || b.cost === null ? null : a.cost + b.cost }
 }
 
-/** The period's priced ledger per the wire contract. Schema 3's per-model failed figures price
- * against the model's own rates — the cache-read a failed ping still spent joins wasted at hit
- * price, its uncached input joins raw at miss price; an unpriceable model keeps its dash. The
- * pre-schema-3 wire carries only flat failed figures, which price by the same single-model
- * inference (the failed pings carry no model of their own, so the ledger must hold exactly one
- * for the ping's model to be unambiguous): the uncached joins raw at miss, the cache-read joins
- * wasted at hit. */
+/** One failed-usage side priced at `usd` per 1M tokens; a zero side moves nothing (segOf's rule). */
+function failedSeg(seg: MoneySeg, tokens: number, usd: number | null): MoneySeg {
+  return tokens === 0 ? seg : mergeSeg(seg, { tokens, cost: usd === null ? null : (tokens / 1e6) * usd })
+}
+
+/** The period's priced ledger per the wire contract. Failed pings' cache-read joins wasted at hit
+ * price, their uncached input joins raw at miss price. Schema 3's per-model figures price against
+ * the model's own rates. The flat figures are the authoritative totals, and the per-model maps
+ * only count from the schema-3 upgrade on, so the flat remainder past the per-model sums (a
+ * pre-schema-3 wire's whole figure) prices by single-model inference: the failed pings carry no
+ * model of their own, so the ledger must hold exactly one for the ping's model to be unambiguous.
+ * An unpriceable side keeps its dash. */
 function moneyOf(
   models: Record<string, WarmingModelCounters>,
   flatFailed: { cacheRead: number; uncached: number },
@@ -123,21 +128,21 @@ function moneyOf(
   const useful = segOf(models, book, m => m.pingCacheReadTokens.held, r => r.hit)
   let wasted = segOf(models, book, wastedCacheReadOf, r => r.hit)
   let raw = segOf(models, book, m => m.pingUncachedTokens, r => r.miss)
-  let perModelFailed = 0
-  for (const id of Object.keys(models)) {
+  let modelCacheRead = 0
+  let modelUncached = 0
+  const ids = Object.keys(models)
+  for (const id of ids) {
     const f = models[id].failedPingTokens
-    if (f === undefined || (f.cacheRead === 0 && f.uncached === 0)) continue
-    perModelFailed += f.cacheRead + f.uncached
+    if (f === undefined) continue
+    modelCacheRead += f.cacheRead
+    modelUncached += f.uncached
     const rate = priceOf(book, '', id)
-    wasted = mergeSeg(wasted, { tokens: f.cacheRead, cost: rate === null ? null : (f.cacheRead / 1e6) * rate.hit })
-    raw = mergeSeg(raw, { tokens: f.uncached, cost: rate === null ? null : (f.uncached / 1e6) * rate.miss })
+    wasted = failedSeg(wasted, f.cacheRead, rate === null ? null : rate.hit)
+    raw = failedSeg(raw, f.uncached, rate === null ? null : rate.miss)
   }
-  if (perModelFailed === 0 && flatFailed.uncached > 0) {
-    const ids = Object.keys(models)
-    const rate = ids.length === 1 ? priceOf(book, '', ids[0]) : null
-    wasted = mergeSeg(wasted, { tokens: flatFailed.cacheRead, cost: rate === null ? null : (flatFailed.cacheRead / 1e6) * rate.hit })
-    raw = mergeSeg(raw, { tokens: flatFailed.uncached, cost: rate === null ? null : (flatFailed.uncached / 1e6) * rate.miss })
-  }
+  const rate = ids.length === 1 ? priceOf(book, '', ids[0]) : null
+  wasted = failedSeg(wasted, Math.max(0, flatFailed.cacheRead - modelCacheRead), rate === null ? null : rate.hit)
+  raw = failedSeg(raw, Math.max(0, flatFailed.uncached - modelUncached), rate === null ? null : rate.miss)
   return { saved, useful, wasted, raw }
 }
 

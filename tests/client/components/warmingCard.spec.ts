@@ -496,6 +496,24 @@ describe('WarmingCard', () => {
     await day.unmount()
   })
 
+  test('the flat failed figures past the per-model sums (pre-schema-3 rows) still price', async () => {
+    // A ledger upgraded from schema 2: the flat totals keep the legacy failed usage the per-model
+    // maps never saw — 100k cache-read at hit ($0.01) and 100k uncached at miss ($0.10) beyond them.
+    stubRoute({
+      ...WIRE_SCHEMA3,
+      stats: { ...WIRE_SCHEMA3.stats, failedPingTokens: { cacheRead: 400_000, uncached: 300_000 } },
+    })
+    const Card = makeWarmingCard(kit, Donut)
+    const card = await mount(h(Card, {}))
+    await until(() => card.container.querySelector('.lc-warm-hero-value')?.textContent === '+$6.01', 'the all-time verdict prices')
+    assert.equal(query(card.container, '.lc-warm-hero-eq').textContent, 'saved $8.00 − spent $1.99')
+    assert.deepEqual([2, 3].map(i => legOf(card.container, i)), [
+      { label: 'Wasted spend', tok: '1.9M', cost: '$0.19' },
+      { label: 'Full-price spend', tok: '1.3M', cost: '$1.30' },
+    ])
+    await card.unmount()
+  })
+
   test('per-model failed figures: a zero pair skips, a cache-read-less pair prices, an unpriceable model dashes', async () => {
     // Zai declares a zero failed pair (none observed) and must not shift a bucket; mistral declares
     // failed uncached with no cache-read, pricing at its own miss rate ($0.05, not zai's $0.10).
